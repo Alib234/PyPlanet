@@ -1,6 +1,22 @@
 Changelog
 =========
 
+0.11.10
+-------
+
+Core
+~~~~
+
+* Improvement: Bump version of a specific dependency to support arm64 architecture.
+
+
+Apps
+~~~~
+
+* Bugfix: Fixed remove unexisting views reference (Local Records) (#1355).
+* Bugfix: Fixed make ID3 tag search case insensitive (Music Server) (#1359).
+
+
 0.11.9
 ------
 
