@@ -1,6 +1,7 @@
 import asyncio
 import async_timeout
 import aiohttp
+import random
 import re
 
 from pyplanet.conf import settings
@@ -21,9 +22,11 @@ class MusicServer(AppConfig):
 		self.lock = asyncio.Lock()
 		self.context.signals.listen(mp_signals.map.map_end, self.map_end)
 		self.server = None
+		self.current_song_indexes_shuffled = []
 		self.current_song_index = 0
 		self.current_song = None
 		self.songs = []
+		self.songs_amount = 0
 		self.list_view = None
 		self.playlist = []
 		self.playlist_view = None
@@ -33,6 +36,11 @@ class MusicServer(AppConfig):
 			description='Whether to override the map music.',
 			default=True
 		)
+		self.setting_shuffle_music = Setting(
+			'shuffle_music', 'Shuffle music', Setting.CAT_BEHAVIOUR, type=bool,
+			description='Whether to shuffle the music.',
+			default=True
+		)
 
 	async def on_start(self):
 		self.songs = await self.get_songs()
@@ -40,6 +48,13 @@ class MusicServer(AppConfig):
 		self.playlist_view = PlaylistView(self)
 
 		await self.context.setting.register(self.setting_override_map_music)
+		await self.context.setting.register(self.setting_shuffle_music)
+
+		if await self.setting_shuffle_music.get_value():
+			self.songs_amount = len(self.songs)
+			self.current_song_indexes_shuffled = list(range(self.songs_amount))
+			random.shuffle(self.current_song_indexes_shuffled)
+
 		await self.instance.permission_manager.register('play', 'Plays a song from the playlist', app=self, min_level=1)
 		await self.instance.permission_manager.register('clear', 'Clear the playlist', app=self, min_level=1)
 
@@ -105,10 +120,17 @@ class MusicServer(AppConfig):
 			self.playlist.pop(0)
 		else:
 			if self.current_song_index + 2 > len(self.songs):
-				new_song = self.songs[0]
+				if not await self.setting_shuffle_music.get_value():
+					new_song = self.songs[0]
+				else:
+					random.shuffle(self.current_song_indexes_shuffled)
+					new_song = self.songs[self.current_song_indexes_shuffled[0]]
 				self.current_song_index = 0
 			else:
-				new_song = self.songs[self.current_song_index + 1]
+				if not await self.setting_shuffle_music.get_value():
+					new_song = self.songs[self.current_song_index + 1]
+				else:
+					new_song = self.songs[self.current_song_indexes_shuffled[self.current_song_index + 1]]
 				self.current_song_index += 1
 		try:
 			override_map_music = await self.setting_override_map_music.get_value()
@@ -132,7 +154,12 @@ class MusicServer(AppConfig):
 		try:
 			async with aiohttp.ClientSession() as session:
 				url, tags = (song, await self.get_tags(session, song))
-				self.songs.insert(self.current_song_index + 1, (url, tags))
+				if not await self.setting_shuffle_music.get_value():
+					self.songs.insert(self.current_song_index + 1, (url, tags))
+				else:
+					self.songs_amount += 1
+					self.songs.insert(self.songs_amount, (url, tags))
+					self.current_song_indexes_shuffled.insert(self.songs_amount,self.songs_amount)
 				message = '$fff{}$z$s$fa0 was added to the songlist by $fff{}$z$s$fa0.'\
 					.format(tags['title']+" - "+tags['artist'], player.nickname)
 				await self.instance.chat(message)
